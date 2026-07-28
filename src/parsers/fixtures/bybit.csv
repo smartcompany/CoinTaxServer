@@ -1,0 +1,3 @@
+Time,Symbol,Side,Filled,Filled Price,Fee,Order ID
+2027-05-15 12:00:00,ETHUSDT,Buy,1.5,2500,0.5,bybit-1
+2027-11-15 12:00:00,ETHUSDT,Sell,1.5,3000,0.6,bybit-2

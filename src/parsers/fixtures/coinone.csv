@@ -1,0 +1,3 @@
+currency,type,qty,price,fee,timestamp,order_id
+XRP,buy,1000,800,400,2027-04-01 08:00:00,coinone-1
+XRP,sell,1000,900,450,2027-07-01 08:00:00,coinone-2
