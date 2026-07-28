@@ -4,6 +4,7 @@ import multipart from '@fastify/multipart';
 import { getSupabaseConfig } from './db/supabase.js';
 import { authRoutes } from './routes/auth.js';
 import { connectionRoutes } from './routes/connections.js';
+import { guestRoutes } from './routes/guest.js';
 import { tradeRoutes } from './routes/trades.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
@@ -36,6 +37,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   await app.register(authRoutes);
+  await app.register(guestRoutes);
   await app.register(connectionRoutes);
   await app.register(tradeRoutes);
 

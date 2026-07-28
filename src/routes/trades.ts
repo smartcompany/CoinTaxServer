@@ -18,6 +18,41 @@ function usdtKrw(): number {
 export async function tradeRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authHook);
 
+  app.post('/trades/bulk', async (request) => {
+    const body = z
+      .object({
+        trades: z.array(
+          z.object({
+            id: z.string().min(1),
+            exchange: z.enum(EXCHANGES as [Exchange, ...Exchange[]]),
+            asset: z.string().min(1),
+            side: z.enum(['buy', 'sell']),
+            quantity: z.string().min(1),
+            priceKrw: z.string().min(1),
+            feeKrw: z.string().optional(),
+            tradedAt: z.string().min(1),
+            rawSource: z.enum(['api', 'csv']),
+          }),
+        ),
+      })
+      .parse(request.body);
+
+    const trades = body.trades.map((t) => ({
+      id: t.id,
+      exchange: t.exchange,
+      asset: t.asset,
+      side: t.side,
+      quantity: t.quantity,
+      priceKrw: t.priceKrw,
+      feeKrw: t.feeKrw ?? '0',
+      tradedAt: t.tradedAt,
+      rawSource: t.rawSource,
+    }));
+
+    await upsertTrades(request.user!.userId, trades);
+    return { imported: trades.length };
+  });
+
   app.get('/trades', async (request) => {
     const query = z
       .object({
