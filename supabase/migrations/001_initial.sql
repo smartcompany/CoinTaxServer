@@ -3,6 +3,14 @@
 
 create extension if not exists "pgcrypto";
 
+-- Custom JWT auth users (not Supabase Auth)
+create table if not exists public.cointax_users (
+  id uuid primary key,
+  email text not null unique,
+  password_hash text not null,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.cointax_profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   email text,

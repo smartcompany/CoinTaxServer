@@ -1,57 +1,18 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { getDb } from '../db/index.js';
 import { authHook } from '../lib/auth.js';
 import { parseExchangeCsv } from '../parsers/csv.js';
-import { EXCHANGES, type CanonicalTrade, type Exchange } from '../types/trade.js';
-import { upsertTrades } from './connections.js';
+import { EXCHANGES, type Exchange } from '../types/trade.js';
 import {
-  calculateTaxForYear,
-  type DeemedCostSnapshot,
-} from '../tax/engine.js';
+  loadDeemedCosts,
+  loadUserTrades,
+  saveDeemedCosts,
+  upsertTrades,
+} from '../db/supabase.js';
+import { calculateTaxForYear } from '../tax/engine.js';
 
 function usdtKrw(): number {
   return Number(process.env.DEFAULT_USDT_KRW ?? '1350');
-}
-
-function loadUserTrades(userId: string): CanonicalTrade[] {
-  const db = getDb();
-  const rows = db
-    .prepare(
-      `SELECT id, exchange, asset, side, quantity, price_krw, fee_krw, traded_at, raw_source
-       FROM cointax_trades WHERE user_id = ? ORDER BY traded_at ASC`,
-    )
-    .all(userId) as Array<{
-    id: string;
-    exchange: Exchange;
-    asset: string;
-    side: 'buy' | 'sell';
-    quantity: string;
-    price_krw: string;
-    fee_krw: string;
-    traded_at: string;
-    raw_source: 'api' | 'csv';
-  }>;
-
-  return rows.map((r) => ({
-    id: r.id,
-    exchange: r.exchange,
-    asset: r.asset,
-    side: r.side,
-    quantity: r.quantity,
-    priceKrw: r.price_krw,
-    feeKrw: r.fee_krw,
-    tradedAt: r.traded_at,
-    rawSource: r.raw_source,
-  }));
-}
-
-function loadDeemedCosts(userId: string): DeemedCostSnapshot[] {
-  const db = getDb();
-  const rows = db
-    .prepare('SELECT asset, price_krw FROM cointax_deemed_costs WHERE user_id = ?')
-    .all(userId) as Array<{ asset: string; price_krw: string }>;
-  return rows.map((r) => ({ asset: r.asset, priceKrw: r.price_krw }));
 }
 
 export async function tradeRoutes(app: FastifyInstance) {
@@ -66,7 +27,7 @@ export async function tradeRoutes(app: FastifyInstance) {
       })
       .parse(request.query);
 
-    let trades = loadUserTrades(request.user!.userId);
+    let trades = await loadUserTrades(request.user!.userId);
     if (query.year) {
       trades = trades.filter(
         (t) => new Date(t.tradedAt).getUTCFullYear() === query.year,
@@ -96,7 +57,7 @@ export async function tradeRoutes(app: FastifyInstance) {
     const buf = await data.toBuffer();
     const text = buf.toString('utf8');
     const parsed = parseExchangeCsv(exchange, text, usdtKrw());
-    upsertTrades(request.user!.userId, parsed.trades);
+    await upsertTrades(request.user!.userId, parsed.trades);
 
     return {
       imported: parsed.trades.length,
@@ -106,12 +67,13 @@ export async function tradeRoutes(app: FastifyInstance) {
   });
 
   app.get('/tax/:year', async (request) => {
-    const year = z.coerce.number().parse((request.params as { year: string }).year);
-    const trades = loadUserTrades(request.user!.userId);
-    const deemedCosts = loadDeemedCosts(request.user!.userId);
+    const year = z.coerce
+      .number()
+      .parse((request.params as { year: string }).year);
+    const trades = await loadUserTrades(request.user!.userId);
+    const deemedCosts = await loadDeemedCosts(request.user!.userId);
     const report = calculateTaxForYear(trades, year, { deemedCosts });
 
-    // Don't send full Decimal objects in realized — serialize
     return {
       disclaimer:
         '참고용 계산입니다. 세무 신고 전 국세청 안내 및 세무사 상담을 확인하세요.',
@@ -145,35 +107,20 @@ export async function tradeRoutes(app: FastifyInstance) {
       })
       .parse(request.body);
 
-    const db = getDb();
-    const upsert = db.prepare(`
-      INSERT INTO cointax_deemed_costs (user_id, asset, price_krw)
-      VALUES (?, ?, ?)
-      ON CONFLICT(user_id, asset) DO UPDATE SET price_krw = excluded.price_krw
-    `);
-    const tx = db.transaction((items: { asset: string; priceKrw: string }[]) => {
-      for (const item of items) {
-        upsert.run(
-          request.user!.userId,
-          item.asset.toUpperCase(),
-          item.priceKrw,
-        );
-      }
-    });
-    tx(body.items);
+    await saveDeemedCosts(request.user!.userId, body.items);
     return { saved: body.items.length };
   });
 
   app.get('/deemed-costs', async (request) => {
-    return { items: loadDeemedCosts(request.user!.userId) };
+    return { items: await loadDeemedCosts(request.user!.userId) };
   });
 
   app.get('/summary', async (request) => {
-    const trades = loadUserTrades(request.user!.userId);
+    const trades = await loadUserTrades(request.user!.userId);
     const years = new Set(
       trades.map((t) => new Date(t.tradedAt).getUTCFullYear()),
     );
-    const deemedCosts = loadDeemedCosts(request.user!.userId);
+    const deemedCosts = await loadDeemedCosts(request.user!.userId);
     const byYear = [...years]
       .sort()
       .map((year) => {

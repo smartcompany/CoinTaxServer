@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { getDb } from '../db/index.js';
+import { createUser, findUserByEmail } from '../db/supabase.js';
 import { hashPassword, verifyPassword } from '../lib/crypto.js';
 import { authHook, signToken } from '../lib/auth.js';
 
@@ -14,22 +14,31 @@ export async function authRoutes(app: FastifyInstance) {
       })
       .parse(request.body);
 
-    const db = getDb();
-    const existing = db
-      .prepare('SELECT id FROM cointax_users WHERE email = ?')
-      .get(body.email.toLowerCase());
+    const email = body.email.toLowerCase();
+    const existing = await findUserByEmail(email);
     if (existing) {
       return reply.code(409).send({ error: 'Email already registered' });
     }
 
     const id = randomUUID();
     const now = new Date().toISOString();
-    db.prepare(
-      'INSERT INTO cointax_users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)',
-    ).run(id, body.email.toLowerCase(), hashPassword(body.password), now);
+    try {
+      await createUser({
+        id,
+        email,
+        password_hash: hashPassword(body.password),
+        created_at: now,
+      });
+    } catch (e) {
+      const msg = (e as Error).message;
+      if (msg.includes('duplicate') || msg.includes('unique')) {
+        return reply.code(409).send({ error: 'Email already registered' });
+      }
+      throw e;
+    }
 
-    const token = signToken({ userId: id, email: body.email.toLowerCase() });
-    return { token, user: { id, email: body.email.toLowerCase() } };
+    const token = signToken({ userId: id, email });
+    return { token, user: { id, email } };
   });
 
   app.post('/auth/login', async (request, reply) => {
@@ -40,13 +49,7 @@ export async function authRoutes(app: FastifyInstance) {
       })
       .parse(request.body);
 
-    const db = getDb();
-    const user = db
-      .prepare('SELECT id, email, password_hash FROM cointax_users WHERE email = ?')
-      .get(body.email.toLowerCase()) as
-      | { id: string; email: string; password_hash: string }
-      | undefined;
-
+    const user = await findUserByEmail(body.email.toLowerCase());
     if (!user || !verifyPassword(body.password, user.password_hash)) {
       return reply.code(401).send({ error: 'Invalid credentials' });
     }
