@@ -4,7 +4,7 @@ import { buildApp } from '../src/app.js';
 
 let appPromise: Promise<FastifyInstance> | null = null;
 
-function getApp() {
+async function getApp() {
   if (!appPromise) appPromise = buildApp();
   return appPromise;
 }
