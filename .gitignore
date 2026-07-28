@@ -21,8 +21,6 @@ dist/
 build/
 coverage/
 *.tsbuildinfo
-api/index.cjs
-api/index.js
 
 # Logs & debug
 logs/
