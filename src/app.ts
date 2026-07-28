@@ -16,6 +16,13 @@ export async function buildApp(): Promise<FastifyInstance> {
     limits: { fileSize: 50 * 1024 * 1024 },
   });
 
+  app.get('/', async () => ({
+    ok: true,
+    service: 'cointax-server',
+    health: '/health',
+    version: '1.0.0',
+  }));
+
   app.get('/health', async () => {
     const supabase = getSupabaseConfig();
     return {
