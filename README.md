@@ -13,7 +13,7 @@ npm run dev
 ## Vercel
 
 - Framework Preset: **Other**
-- Node.js Version: **20.x**
+- Node.js Version: **24.x** (Vercel Project Settings와 `engines.node` 일치)
 - Root Directory: **비움** (이 repo가 git root)
 - Build Command: **비움**
 - Env: `JWT_SECRET`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
